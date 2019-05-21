@@ -2,17 +2,34 @@ import chess.pgn
 import os, time, re, hashlib
 from neo4j import GraphDatabase
 
+def create_id_from_strings(string_list):
+    CHARS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
+    hash = hashlib.sha256()
+    for s in string_list:
+        hash.update(s.encode())
+    hex = hash.hexdigest()
+    long_integer = int(hex, 16)
+    long_string = str(long_integer)
+    result = ""
+    for digit in long_string:
+        result += CHARS[int(digit)]
+    return result
+
 # add options here to either import single file, example game, or directory
 if __name__ == "__main__":
 
     driver = GraphDatabase.driver("bolt://localhost:7687", auth=(os.environ['NEO4J_USER'], os.environ['NEO4J_PASSWORD']))
     print("Enter filename to import games from:")
     filename = input()
+    print("Enter encoding (leave blank if unsure):")
+    encoding = input()
+    if len(encoding) < 1:
+        encoding="utf-8"
 
     num_games = 0
     start_time = int(time.time())
 
-    with open(filename, encoding="ISO-8859-1") as pgn:
+    with open(filename, encoding=encoding) as pgn:
 
         with driver.session() as session:
 
@@ -27,22 +44,23 @@ if __name__ == "__main__":
                 players.append(black_player)
 
                 for player_name in players:
-                    nodeLabel = player_name.lower().replace(' ', '')
-                    nodeLabel = re.sub(r'[^a-zA-Z]', '', nodeLabel)
-                    query = "MERGE (%s:Player {name: \"%s\"})" % (nodeLabel, player_name)
-                    session.run(query)
+                    query = "MERGE (%s:Player {name: \"%s\"})" % (create_id_from_strings([player_name]), player_name)
+                    result = session.run(query)
 
-                # create game node if it doesn't exist
+                # create game node if they don't exist
                 event = game.headers["Event"]
                 date = game.headers["Date"]
                 result = game.headers["Result"]
-                nodeLabel = event + date + result
-                nodeLabel = re.sub(r'[^a-zA-Z]', '', nodeLabel).lower()
+                game_id = create_id_from_strings([event, date, result, black_player, white_player])
 
-                query = "MERGE (%s:Game {event: \"%s\", date: \"%s\", result: \"%s\"})" % (nodeLabel, event, date, result)
+                query = "MERGE (%s:Game {event: \"%s\", date: \"%s\", result: \"%s\", game_id: \"%s\"})" % (game_id, event, date, result, game_id)
                 session.run(query)
 
-                # Here create the relatioship between the players and the game
+                # Here create the relationship between the players and the game
+                query = "MATCH (a:Player), (b:Game) WHERE a.name = \"%s\" AND b.game_id = \"%s\" CREATE (a)-[:PLAYED_WHITE_IN]->(b)" % (white_player, game_id)
+                session.run(query)
+                query = "MATCH (a:Player), (b:Game) WHERE a.name = \"%s\" AND b.game_id = \"%s\" CREATE (a)-[:PLAYED_BLACK_IN]->(b)" % (black_player, game_id)
+                session.run(query)
 
                 board = game.board()
                 for move in game.mainline_moves():
@@ -50,8 +68,12 @@ if __name__ == "__main__":
 
                     fen_string = board.fen()
                     # Create position node
+                    query = "MERGE (a:Position {FEN: \"%s\"})" % (fen_string)
+                    session.run(query)
 
                     # add relationship between position node and game
+                    query = "MATCH (a:Position), (b:Game) WHERE a.FEN = \"%s\" AND b.game_id = \"%s\" CREATE (b)-[:HAD_POSITION]->(a)" % (fen_string, game_id)
+                    session.run(query)
 
                 num_games += 1
                 print(white_player + " vs. " + black_player)
