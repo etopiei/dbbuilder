@@ -63,6 +63,17 @@ if __name__ == "__main__":
                 session.run(query)
 
                 board = game.board()
+
+                # push inital move to board
+                fen_string = board.fen()
+                # Create position node
+                query = "MERGE (a:Position {FEN: \"%s\"})" % (fen_string)
+                session.run(query)
+
+                # add relationship between position node and game
+                query = "MATCH (a:Position), (b:Game) WHERE a.FEN = \"%s\" AND b.game_id = \"%s\" CREATE (b)-[:HAD_POSITION]->(a)" % (fen_string, game_id)
+                session.run(query)
+
                 for move in game.mainline_moves():
                     board.push(move)
 
@@ -76,7 +87,8 @@ if __name__ == "__main__":
                     session.run(query)
 
                 num_games += 1
-                print(white_player + " vs. " + black_player)
+                print("Imported: " + white_player + " vs. " + black_player)
+                print(str(num_games) + " imported so far.")
                 game = chess.pgn.read_game(pgn)
 
         elapsed = int(time.time()) - start_time
