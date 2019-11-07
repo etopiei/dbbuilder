@@ -4,7 +4,9 @@ This is the database builder for the OCB (OpenChessBrowser).
 
 ## Dependencies
 
-To install all required dependencies run:
+You need neo4j installed and running for this to work. For instructions installing neo4j go [here](https://neo4j.com/download).
+
+To install all required dependencies for the script run:
 
 	$ pip3 install -r requirements.txt
 
