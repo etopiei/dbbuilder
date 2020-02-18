@@ -74,7 +74,12 @@ if __name__ == "__main__":
                 query = "MATCH (a:Position), (b:Game) WHERE a.FEN = \"%s\" AND b.game_id = \"%s\" CREATE (b)-[:HAD_POSITION]->(a)" % (fen_string, game_id)
                 session.run(query)
 
+                count = 1
                 for move in game.mainline_moves():
+                    # here save the previous board state so we can create a relationship
+                    # between FEN's with the moves to get from one to another
+                    # This will make it easier to construct PGN
+                    move_string = board.san(move)
                     board.push(move)
 
                     fen_string = board.fen()
@@ -83,8 +88,9 @@ if __name__ == "__main__":
                     session.run(query)
 
                     # add relationship between position node and game
-                    query = "MATCH (a:Position), (b:Game) WHERE a.FEN = \"%s\" AND b.game_id = \"%s\" CREATE (b)-[:HAD_POSITION]->(a)" % (fen_string, game_id)
+                    query = "MATCH (a:Position), (b:Game) WHERE a.FEN = \"%s\" AND b.game_id = \"%s\" CREATE (b)-[:HAD_POSITION{move:\"%s\",move_number:\"%s\"}]->(a)" % (fen_string, game_id, move_string, str(count))
                     session.run(query)
+                    count += 1
 
                 num_games += 1
                 print("Imported: " + white_player + " vs. " + black_player)
